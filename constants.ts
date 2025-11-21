@@ -1,4 +1,5 @@
-import { DataPoint, ChartType, PointStyle, ColorMode, StoryStep, TextPosition, ShapeType } from './types';
+
+import { DataPoint, ChartType, PointStyle, ColorMode, StoryStep, TextPosition, ShapeType, LegendPosition } from './types';
 
 export const INITIAL_DATA: DataPoint[] = Array.from({ length: 50 }, (_, i) => ({
   id: `item-${i}`,
@@ -13,6 +14,10 @@ export const CHART_OPTIONS = [
   { label: 'Scatter Plot', value: ChartType.SCATTER },
   { label: 'Bar Chart (Stacked)', value: ChartType.BAR },
   { label: 'Radial/Circular', value: ChartType.RADIAL },
+  { label: 'Histogram', value: ChartType.HISTOGRAM },
+  { label: 'Dot Plot', value: ChartType.DOTPLOT },
+  { label: 'Beeswarm', value: ChartType.BEESWARM },
+  { label: 'Violin Plot', value: ChartType.VIOLIN },
 ];
 
 export const POSITION_OPTIONS = [
@@ -32,6 +37,13 @@ export const SHAPE_OPTIONS = [
   { label: 'Cross', value: ShapeType.CROSS },
 ];
 
+export const LEGEND_POSITION_OPTIONS = [
+  { label: 'Bottom Left', value: LegendPosition.BOTTOM_LEFT },
+  { label: 'Bottom Right', value: LegendPosition.BOTTOM_RIGHT },
+  { label: 'Top Left', value: LegendPosition.TOP_LEFT },
+  { label: 'Top Right', value: LegendPosition.TOP_RIGHT },
+];
+
 export const COLOR_PALETTES = {
   PASTEL: ['#fbb4ae', '#b3cde3', '#ccebc5', '#decbe4', '#fed9a6', '#ffffcc', '#e5d8bd', '#fddaec'],
   VIBRANT: ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00', '#ffff33', '#a65628', '#f781bf'],
@@ -48,6 +60,8 @@ export const DEFAULT_POINT_STYLE: PointStyle = {
   baseColor: '#FF8F8F',
   shape: ShapeType.CIRCLE,
   palette: COLOR_PALETTES.PASTEL,
+  legendPosition: LegendPosition.BOTTOM_LEFT,
+  tooltipFields: ['label'],
 };
 
 export const DEFAULT_STEPS: StoryStep[] = [

@@ -1,8 +1,13 @@
+
 export enum ChartType {
   GRID = 'GRID',
   SCATTER = 'SCATTER',
   BAR = 'BAR',
   RADIAL = 'RADIAL',
+  HISTOGRAM = 'HISTOGRAM',
+  DOTPLOT = 'DOTPLOT',
+  BEESWARM = 'BEESWARM',
+  VIOLIN = 'VIOLIN',
 }
 
 export enum TextPosition {
@@ -22,6 +27,13 @@ export enum ShapeType {
   CROSS = 'CROSS',
 }
 
+export enum LegendPosition {
+  TOP_LEFT = 'TOP_LEFT',
+  TOP_RIGHT = 'TOP_RIGHT',
+  BOTTOM_LEFT = 'BOTTOM_LEFT',
+  BOTTOM_RIGHT = 'BOTTOM_RIGHT',
+}
+
 export interface DataPoint {
   id: string;
   category: string;
@@ -29,6 +41,7 @@ export interface DataPoint {
   valueB: number; // Used for Scatter Y or Height
   label: string;
   color?: string;
+  [key: string]: any; // Allow dynamic fields from uploaded data
 }
 
 export interface DataMapping {
@@ -63,6 +76,8 @@ export interface PointStyle {
   baseColor: string;
   shape: ShapeType;
   palette: string[];
+  legendPosition: LegendPosition;
+  tooltipFields: string[];
 }
 
 export interface AppState {

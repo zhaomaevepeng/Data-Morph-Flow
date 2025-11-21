@@ -1,3 +1,4 @@
+
 import { DataPoint, StoryStep, PointStyle, ChartType, TextPosition, ColorMode } from '../types';
 
 export const downloadProject = (
@@ -23,12 +24,13 @@ export const downloadProject = (
   
   <!-- D3.js -->
   <script src="https://d3js.org/d3.v7.min.js"></script>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
 
   <style>
     body { font-family: 'Quicksand', sans-serif; }
-    /* Smooth scrolling for the container */
     html, body { height: 100%; margin: 0; padding: 0; }
-    /* Hide scrollbar for legend */
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
@@ -49,7 +51,11 @@ export const downloadProject = (
       GRID: 'GRID',
       SCATTER: 'SCATTER',
       BAR: 'BAR',
-      RADIAL: 'RADIAL'
+      RADIAL: 'RADIAL',
+      HISTOGRAM: 'HISTOGRAM',
+      DOTPLOT: 'DOTPLOT',
+      BEESWARM: 'BEESWARM',
+      VIOLIN: 'VIOLIN'
     };
 
     const TextPosition = {
@@ -74,9 +80,19 @@ export const downloadProject = (
       CROSS: 'CROSS'
     };
 
+    const LegendPosition = {
+      TOP_LEFT: 'TOP_LEFT',
+      TOP_RIGHT: 'TOP_RIGHT',
+      BOTTOM_LEFT: 'BOTTOM_LEFT',
+      BOTTOM_RIGHT: 'BOTTOM_RIGHT',
+    };
+
     // --- VIZ RENDERER COMPONENT ---
     const VizRenderer = ({ data, prevConfig, nextConfig, pointStyle, progress }) => {
       const svgRef = useRef(null);
+      const gRef = useRef(null);
+      const tooltipRef = useRef(null);
+      
       const width = 1000; 
       const height = 800;
       const margin = { top: 60, right: 60, bottom: 60, left: 60 };
@@ -85,7 +101,8 @@ export const downloadProject = (
 
       const calculatePositions = (config, dataset) => {
         const positions = new Map();
-        
+        const radius = pointStyle.radius;
+
         if (config.chartType === ChartType.GRID) {
           const cols = 12;
           const cellWidth = innerWidth / cols;
@@ -108,27 +125,89 @@ export const downloadProject = (
           const categories = Array.from(new Set(dataset.map(d => d.category))).sort();
           const xScale = d3.scaleBand().domain(categories).range([0, innerWidth]).padding(0.4);
           const counts = {};
-          const spacing = pointStyle.radius * 2.2;
+          const spacing = radius * 2.2;
           dataset.forEach(d => {
             if (!counts[d.category]) counts[d.category] = 0;
             const count = counts[d.category];
             positions.set(d.id, {
               x: (xScale(d.category) || 0) + xScale.bandwidth() / 2,
-              y: innerHeight - (count * spacing) - pointStyle.radius,
+              y: innerHeight - (count * spacing) - radius,
             });
             counts[d.category]++;
           });
         } else if (config.chartType === ChartType.RADIAL) {
-           const radius = Math.min(innerWidth, innerHeight) / 2.5;
+           const r = Math.min(innerWidth, innerHeight) / 2.5;
            const angleScale = d3.scaleLinear().domain([0, dataset.length]).range([0, 2 * Math.PI]);
            dataset.forEach((d, i) => {
                const angle = angleScale(i);
-               const r = radius + (d.valueA / 100) * 60; 
+               const dist = r + (d.valueA / 100) * 60; 
                positions.set(d.id, {
-                   x: innerWidth / 2 + Math.cos(angle) * r,
-                   y: innerHeight / 2 + Math.sin(angle) * r,
+                   x: innerWidth / 2 + Math.cos(angle) * dist,
+                   y: innerHeight / 2 + Math.sin(angle) * dist,
                });
            });
+        } else if (config.chartType === ChartType.HISTOGRAM) {
+            const xScale = d3.scaleLinear().domain([0, 100]).range([0, innerWidth]);
+            const bins = d3.bin()
+                .value(d => d.valueA)
+                .domain([0, 100])
+                .thresholds(xScale.ticks(20))
+                (dataset);
+            
+            bins.forEach(bin => {
+                bin.forEach((d, i) => {
+                    positions.set(d.id, {
+                        x: (bin.x0 + bin.x1) / 2 / 100 * innerWidth, 
+                        y: innerHeight - i * (radius * 2) - radius
+                    });
+                });
+            });
+
+        } else if (config.chartType === ChartType.DOTPLOT) {
+            const xScale = d3.scaleLinear().domain([0, 100]).range([0, innerWidth]);
+            const counts = {};
+            dataset.forEach(d => {
+                const x = xScale(d.valueA);
+                const bucket = Math.floor(x / (radius * 2));
+                if (!counts[bucket]) counts[bucket] = 0;
+                positions.set(d.id, {
+                    x: bucket * (radius * 2),
+                    y: innerHeight - counts[bucket] * (radius * 2) - radius
+                });
+                counts[bucket]++;
+            });
+
+        } else if (config.chartType === ChartType.BEESWARM) {
+            const xScale = d3.scaleLinear().domain([0, 100]).range([0, innerWidth]);
+            const nodes = dataset.map(d => ({ ...d, x: xScale(d.valueA), y: innerHeight / 2 }));
+            const simulation = d3.forceSimulation(nodes)
+                .force("x", d3.forceX(d => xScale(d.valueA)).strength(1))
+                .force("y", d3.forceY(innerHeight / 2).strength(0.1))
+                .force("collide", d3.forceCollide(radius + 1))
+                .stop();
+            for (let i = 0; i < 120; ++i) simulation.tick();
+            nodes.forEach(d => {
+                positions.set(d.id, { x: d.x, y: d.y });
+            });
+
+        } else if (config.chartType === ChartType.VIOLIN) {
+            const xScale = d3.scaleLinear().domain([0, 100]).range([0, innerWidth]);
+            const bins = d3.bin()
+                .value(d => d.valueA)
+                .domain([0, 100])
+                .thresholds(xScale.ticks(15))
+                (dataset);
+
+            bins.forEach(bin => {
+                bin.forEach((d, i) => {
+                    const xBase = (bin.x0 + bin.x1) / 2 / 100 * innerWidth;
+                    const offset = (i % 2 === 0 ? 1 : -1) * Math.ceil((i + 1) / 2) * (radius * 1.8);
+                    positions.set(d.id, {
+                        x: xBase,
+                        y: (innerHeight / 2) + offset
+                    });
+                });
+            });
         }
         return positions;
       };
@@ -137,10 +216,7 @@ export const downloadProject = (
       const endPositions = useMemo(() => calculatePositions(nextConfig, data), [data, nextConfig, pointStyle.radius]);
 
       const categories = useMemo(() => Array.from(new Set(data.map(d => d.category))).sort(), [data]);
-      const colorScale = useMemo(() => {
-        // Use the palette directly
-        return d3.scaleOrdinal(pointStyle.palette).domain(categories);
-      }, [categories, pointStyle.palette]);
+      const colorScale = useMemo(() => d3.scaleOrdinal(pointStyle.palette).domain(categories), [categories, pointStyle.palette]);
 
       const getD3Symbol = (shape) => {
         switch (shape) {
@@ -154,17 +230,76 @@ export const downloadProject = (
         }
       };
 
-      useEffect(() => {
-        if (!svgRef.current) return;
-        const svg = d3.select(svgRef.current);
+      const getLegendPositionClasses = (pos) => {
+        switch (pos) {
+          case LegendPosition.TOP_LEFT: return 'top-8 left-8';
+          case LegendPosition.TOP_RIGHT: return 'top-8 right-8';
+          case LegendPosition.BOTTOM_RIGHT: return 'bottom-8 right-8';
+          case LegendPosition.BOTTOM_LEFT: 
+          default: return 'bottom-8 left-8';
+        }
+      };
+
+      const generateTooltipHtml = (d) => {
+        const fields = pointStyle.tooltipFields;
+        const showLabel = fields.includes('label');
+        const otherFields = fields.filter(f => f !== 'label');
         
-        // Use paths instead of circles
-        const points = svg.selectAll('path').data(data, d => d.id);
+        let html = '';
+        if (showLabel) {
+           html += \`<div class="font-bold text-slate-800 mb-1 pb-1 border-b border-slate-200 text-sm">\${d.label}</div>\`;
+        }
+        
+        if (otherFields.length > 0) {
+            html += \`<div class="flex flex-col gap-0.5 mt-1">\`;
+            otherFields.forEach(key => {
+                let val = d[key];
+                if (val === undefined || val === null) return;
+                
+                if (typeof val === 'number') {
+                     val = Number.isInteger(val) ? val : val.toFixed(2);
+                     val = \`<span class="font-mono font-bold text-slate-700">\${val}</span>\`;
+                } else {
+                     val = \`<span class="font-medium text-slate-600 text-right max-w-[120px] truncate">\${val}</span>\`;
+                }
+                
+                const label = key.charAt(0).toUpperCase() + key.slice(1);
+                html += \`<div class="flex justify-between items-center gap-4 text-xs">
+                    <span class="text-slate-500">\${label}</span>
+                    \${val}
+                </div>\`;
+            });
+            html += \`</div>\`;
+        }
+        return html;
+      };
+
+      useEffect(() => {
+        if (!gRef.current) return;
+        const container = d3.select(gRef.current);
+        const tooltip = d3.select(tooltipRef.current);
+        
+        const points = container.selectAll('path').data(data, d => d.id);
         
         const enter = points.enter()
           .append('path')
           .attr('stroke', '#fff')
-          .attr('stroke-width', 1);
+          .attr('stroke-width', 1)
+          .attr('cursor', 'pointer')
+          .on('mouseover', (event, d) => {
+             const html = generateTooltipHtml(d);
+             if (html) {
+                tooltip.style('opacity', 1).style('display', 'block').html(html);
+             }
+          })
+          .on('mousemove', (event) => {
+             tooltip
+               .style('left', (event.clientX + 15) + 'px')
+               .style('top', (event.clientY + 15) + 'px');
+          })
+          .on('mouseout', () => {
+             tooltip.style('opacity', 0).style('display', 'none');
+          });
 
         const symbolGenerator = d3.symbol()
           .type(getD3Symbol(pointStyle.shape))
@@ -196,12 +331,13 @@ export const downloadProject = (
       return (
         <div className="w-full h-full flex items-center justify-center p-4 relative">
            <svg ref={svgRef} viewBox={\`0 0 \${width} \${height}\`} className="w-full h-full max-w-6xl max-h-[90vh] drop-shadow-2xl" style={{overflow: 'visible'}}>
-              <g transform={\`translate(\${margin.left},\${margin.top})\`} />
+              <g transform={\`translate(\${margin.left},\${margin.top})\`}>
+                 <g ref={gRef} />
+              </g>
            </svg>
 
-           {/* LEGEND */}
            {pointStyle.colorMode === ColorMode.CATEGORY && categories.length > 0 && (
-            <div className="absolute bottom-8 left-8 bg-white/60 backdrop-blur-xl border border-white/50 p-4 rounded-2xl shadow-xl max-w-[200px] max-h-[300px] overflow-y-auto pointer-events-auto no-scrollbar">
+            <div className={\`absolute \${getLegendPositionClasses(pointStyle.legendPosition)} bg-white/60 backdrop-blur-xl border border-white/50 p-4 rounded-2xl shadow-xl max-w-[200px] max-h-[300px] overflow-y-auto pointer-events-auto no-scrollbar\`}>
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Categories</h3>
                 <div className="flex flex-col gap-2">
                     {categories.map(cat => (
@@ -216,6 +352,12 @@ export const downloadProject = (
                 </div>
             </div>
           )}
+          
+          {/* Tooltip */}
+          <div 
+            ref={tooltipRef}
+            className="fixed z-[100] pointer-events-none bg-white/90 backdrop-blur-xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-xl p-3 min-w-[150px] transition-opacity duration-150 opacity-0 hidden"
+          />
         </div>
       );
     };
@@ -224,6 +366,7 @@ export const downloadProject = (
     const ExportedApp = () => {
       const [activeIndex, setActiveIndex] = useState(0);
       const [localProgress, setLocalProgress] = useState(0);
+      const [isExploreMode, setIsExploreMode] = useState(false);
       const scrollContainerRef = useRef(null);
 
       useEffect(() => {
@@ -250,6 +393,10 @@ export const downloadProject = (
         return () => el?.removeEventListener('scroll', handleScroll);
       }, []);
 
+      useEffect(() => {
+          if (window.lucide) window.lucide.createIcons();
+      }, [isExploreMode]);
+
       const prevStep = STEPS[activeIndex];
       const nextStep = STEPS[activeIndex + 1] || STEPS[STEPS.length - 1];
       const prevConfig = { chartType: prevStep.chartType };
@@ -272,7 +419,7 @@ export const downloadProject = (
       return (
         <div className="h-full w-full overflow-hidden bg-[#fdfcfe] text-slate-800 relative font-sans">
            {/* VIZ LAYER */}
-           <div className="absolute inset-0 flex items-center justify-center z-0">
+           <div className={\`absolute inset-0 flex items-center justify-center transition-all duration-500 \${isExploreMode ? 'z-40 pointer-events-auto bg-[#fdfcfe]/95' : 'z-0 pointer-events-none'}\`}>
              <VizRenderer 
                 data={DATA} 
                 prevConfig={prevConfig} 
@@ -283,18 +430,30 @@ export const downloadProject = (
            </div>
 
            {/* TEXT LAYER */}
-           <div className="absolute inset-0 pointer-events-none z-20">
+           <div className={\`absolute inset-0 pointer-events-none z-20 overflow-hidden transition-opacity duration-300 \${isExploreMode ? 'opacity-0' : 'opacity-100'}\`}>
               <div className={getTextPositionStyles(currentText.textPosition)} style={{ opacity: textOpacity }}>
                  <h1 className="text-2xl font-bold mb-2">{currentText.text}</h1>
                  <div className="w-12 h-1 bg-slate-800/20 rounded-full mb-2"></div>
-                 <p className="text-sm font-mono uppercase text-slate-500">
-                    Scroll to explore
-                 </p>
+                 <p className="text-sm font-mono uppercase text-slate-500">Scroll to explore</p>
               </div>
            </div>
 
+           {/* EXPLORE TOGGLE */}
+           <div className="absolute top-6 right-8 z-50">
+               <button 
+                 onClick={() => setIsExploreMode(!isExploreMode)}
+                 className={\`flex items-center gap-2 px-4 py-2 rounded-full font-bold shadow-lg transition-all \${isExploreMode ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-white/80 text-slate-700 hover:bg-white border border-slate-200'}\`}
+               >
+                  {isExploreMode ? 'Exit Exploration' : 'Explore Data'}
+               </button>
+           </div>
+
            {/* SCROLL TRACK */}
-           <div ref={scrollContainerRef} className="absolute inset-0 overflow-y-auto z-10 scroll-smooth">
+           <div 
+             ref={scrollContainerRef} 
+             className="absolute inset-0 overflow-y-auto z-10 scroll-smooth"
+             style={{ pointerEvents: isExploreMode ? 'none' : 'auto' }}
+           >
               <div style={{ height: \`\${STEPS.length * 100}vh\`, width: '100%' }}></div>
            </div>
         </div>

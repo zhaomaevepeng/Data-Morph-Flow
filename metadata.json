@@ -1,0 +1,5 @@
+{
+  "name": "MorphFlow",
+  "description": "A glassmorphic scrollytelling builder that lets you visualize data morphing between different chart types seamlessly.",
+  "requestFramePermissions": []
+}

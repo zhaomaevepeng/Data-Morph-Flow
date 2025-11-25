@@ -5,7 +5,7 @@ import { VizRenderer } from './components/VizRenderer';
 import { downloadProject } from './services/exportService';
 import { INITIAL_DATA, CHART_OPTIONS, DEFAULT_POINT_STYLE, DEFAULT_STEPS, POSITION_OPTIONS, COLOR_PALETTES, SHAPE_OPTIONS, LEGEND_POSITION_OPTIONS } from './constants';
 import { ChartType, DataPoint, VizConfig, PointStyle, ColorMode, StoryStep, TextPosition, DataMapping, ShapeType, LegendPosition } from './types';
-import { Wand2, BarChart3, LayoutGrid, ChevronDown, Upload, FileText, Palette, Database, Plus, Trash2, ArrowUp, ArrowDown, Download, Settings2, Check, Shapes, Maximize2, X, MessageSquare, Code2, Copy } from 'lucide-react';
+import { Wand2, BarChart3, LayoutGrid, ChevronDown, Upload, FileText, Palette, Database, Plus, Trash2, ArrowUp, ArrowDown, Download, Settings2, Check, Shapes, Maximize2, X, MessageSquare, Code2, Copy, Share2 } from 'lucide-react';
 
 type DataSourceMode = 'UPLOAD' | 'MANUAL';
 
@@ -23,7 +23,7 @@ const App: React.FC = () => {
   // Config State
   const [steps, setSteps] = useState<StoryStep[]>(DEFAULT_STEPS);
   const [pointStyle, setPointStyle] = useState<PointStyle>(DEFAULT_POINT_STYLE);
-  const [activeTab, setActiveTab] = useState<'DATA' | 'STYLE'>('DATA');
+  const [activeTab, setActiveTab] = useState<'DATA' | 'STYLE' | 'EXPORT'>('DATA');
   const [isExploreMode, setIsExploreMode] = useState(false);
   const [showEmbedModal, setShowEmbedModal] = useState(false);
 
@@ -238,7 +238,7 @@ const App: React.FC = () => {
             className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'DATA' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-600 hover:bg-white/20'}`}
           >
             <Database className="w-4 h-4 inline mr-2" />
-            Story & Data
+            Story
           </button>
           <button 
             onClick={() => setActiveTab('STYLE')}
@@ -247,10 +247,17 @@ const App: React.FC = () => {
             <Palette className="w-4 h-4 inline mr-2" />
             Visuals
           </button>
+          <button 
+            onClick={() => setActiveTab('EXPORT')}
+            className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'EXPORT' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-600 hover:bg-white/20'}`}
+          >
+            <Share2 className="w-4 h-4 inline mr-2" />
+            Export
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 px-1 pb-4">
-          {activeTab === 'DATA' ? (
+          {activeTab === 'DATA' && (
             <>
               <GlassCard className="flex flex-col gap-3 !p-4">
                  <h2 className="text-sm font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
@@ -415,7 +422,9 @@ const App: React.FC = () => {
                  </button>
               </div>
             </>
-          ) : (
+          )}
+          
+          {activeTab === 'STYLE' && (
             <>
               <GlassCard className="flex flex-col gap-4 !p-4">
                 <div className="flex items-center gap-2 text-slate-700 font-semibold">
@@ -535,28 +544,36 @@ const App: React.FC = () => {
             </>
           )}
 
-          {/* EXPORT SECTION AT BOTTOM */}
-          <div className="mt-auto pt-4">
+          {activeTab === 'EXPORT' && (
              <GlassCard className="!p-4">
-                 <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Export & Share</h2>
+                 <h2 className="text-sm font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2 mb-3">
+                   <Share2 className="w-3 h-3" /> Export & Share
+                 </h2>
                  <div className="grid grid-cols-2 gap-2">
                     <button 
                         onClick={() => downloadProject(data, steps, pointStyle)}
-                        className="py-2.5 rounded-2xl bg-white/40 hover:bg-white/60 hover:shadow-md border border-white/40 transition-all flex flex-col items-center justify-center gap-1"
+                        className="py-4 rounded-2xl bg-white/40 hover:bg-white/60 hover:shadow-md border border-white/40 transition-all flex flex-col items-center justify-center gap-2"
                     >
-                        <Download className="w-5 h-5 text-slate-700" />
-                        <span className="text-[10px] font-bold text-slate-600">Download HTML</span>
+                        <Download className="w-6 h-6 text-slate-700" />
+                        <span className="text-xs font-bold text-slate-600">Download HTML</span>
                     </button>
                     <button 
                         onClick={() => setShowEmbedModal(true)}
-                        className="py-2.5 rounded-2xl bg-white/40 hover:bg-white/60 hover:shadow-md border border-white/40 transition-all flex flex-col items-center justify-center gap-1"
+                        className="py-4 rounded-2xl bg-white/40 hover:bg-white/60 hover:shadow-md border border-white/40 transition-all flex flex-col items-center justify-center gap-2"
                     >
-                        <Code2 className="w-5 h-5 text-slate-700" />
-                        <span className="text-[10px] font-bold text-slate-600">Get Embed Code</span>
+                        <Code2 className="w-6 h-6 text-slate-700" />
+                        <span className="text-xs font-bold text-slate-600">Get Embed Code</span>
                     </button>
                  </div>
+                 <div className="mt-4 p-3 bg-white/30 rounded-xl border border-white/40">
+                    <p className="text-[10px] text-slate-500 leading-relaxed">
+                        <strong>Exporting</strong> creates a standalone HTML file that works offline. 
+                        <strong>Embed Code</strong> gives you an iframe to place this visualization on your own website.
+                    </p>
+                 </div>
              </GlassCard>
-          </div>
+          )}
+
         </div>
       </aside>
 

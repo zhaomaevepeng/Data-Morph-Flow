@@ -61,7 +61,7 @@ export const DEFAULT_POINT_STYLE: PointStyle = {
   shape: ShapeType.CIRCLE,
   palette: COLOR_PALETTES.PASTEL,
   legendPosition: LegendPosition.BOTTOM_LEFT,
-  tooltipFields: ['label'],
+  tooltipFields: [],
 };
 
 export const DEFAULT_STEPS: StoryStep[] = [

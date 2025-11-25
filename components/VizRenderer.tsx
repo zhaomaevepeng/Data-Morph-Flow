@@ -193,20 +193,13 @@ export const VizRenderer: React.FC<VizRendererProps> = ({
   // Tooltip Content Generator
   const generateTooltipHtml = (d: DataPoint) => {
     const fields = pointStyle.tooltipFields;
-    const showLabel = fields.includes('label');
-    const otherFields = fields.filter(f => f !== 'label');
+    // Always render label as title
+    let html = `<div class="font-bold text-slate-800 mb-1 pb-1 border-b border-slate-200 text-sm">${d.label}</div>`;
     
-    let html = '';
-
-    // Header (Label)
-    if (showLabel) {
-       html += `<div class="font-bold text-slate-800 mb-1 pb-1 border-b border-slate-200 text-sm">${d.label}</div>`;
-    }
-    
-    // Body (Key-Value pairs)
-    if (otherFields.length > 0) {
+    // Body (Key-Value pairs for selected fields)
+    if (fields.length > 0) {
         html += `<div class="flex flex-col gap-0.5 mt-1">`;
-        otherFields.forEach(key => {
+        fields.forEach(key => {
             let val = d[key];
             if (val === undefined || val === null) return;
             
@@ -239,10 +232,19 @@ export const VizRenderer: React.FC<VizRendererProps> = ({
     const points = svg.selectAll<SVGPathElement, DataPoint>('path')
       .data(data, d => d.id);
 
+    // Enter Selection: Create new paths
     const enter = points.enter()
       .append('path')
       .attr('stroke', '#fff')
-      .attr('stroke-width', 1)
+      .attr('stroke-width', 1);
+
+    const symbolGenerator = d3.symbol()
+      .type(getD3Symbol(pointStyle.shape))
+      .size(pointStyle.radius * pointStyle.radius * Math.PI);
+
+    // Merge Selection: Update new AND existing paths
+    // Crucial: Event listeners are attached here so they capture the fresh 'pointStyle' state
+    points.merge(enter as any)
       .on('mouseover', (event, d) => {
          const html = generateTooltipHtml(d);
          if (html) {
@@ -256,13 +258,7 @@ export const VizRenderer: React.FC<VizRendererProps> = ({
       })
       .on('mouseout', () => {
         tooltip.style('opacity', 0).style('display', 'none');
-      });
-
-    const symbolGenerator = d3.symbol()
-      .type(getD3Symbol(pointStyle.shape))
-      .size(pointStyle.radius * pointStyle.radius * Math.PI);
-
-    points.merge(enter as any)
+      })
       .each(function(d) {
         const start = startPositions.get(d.id) || { x: 0, y: 0 };
         const end = endPositions.get(d.id) || { x: 0, y: 0 };

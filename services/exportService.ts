@@ -1,12 +1,12 @@
 
-import { DataPoint, StoryStep, PointStyle, ChartType, TextPosition, ColorMode } from '../types';
+import { DataPoint, StoryStep, PointStyle, ChartType, TextPosition, ColorMode, ShapeType, LegendPosition } from '../types';
 
-export const downloadProject = (
+export const generateHtmlContent = (
   data: DataPoint[], 
   steps: StoryStep[], 
   pointStyle: PointStyle
 ) => {
-  const htmlContent = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -242,17 +242,13 @@ export const downloadProject = (
 
       const generateTooltipHtml = (d) => {
         const fields = pointStyle.tooltipFields;
-        const showLabel = fields.includes('label');
-        const otherFields = fields.filter(f => f !== 'label');
+        // Always render label as header
+        let html = \`<div class="font-bold text-slate-800 mb-1 pb-1 border-b border-slate-200 text-sm">\${d.label}</div>\`;
         
-        let html = '';
-        if (showLabel) {
-           html += \`<div class="font-bold text-slate-800 mb-1 pb-1 border-b border-slate-200 text-sm">\${d.label}</div>\`;
-        }
-        
-        if (otherFields.length > 0) {
+        // Render selected fields
+        if (fields.length > 0) {
             html += \`<div class="flex flex-col gap-0.5 mt-1">\`;
-            otherFields.forEach(key => {
+            fields.forEach(key => {
                 let val = d[key];
                 if (val === undefined || val === null) return;
                 
@@ -285,7 +281,14 @@ export const downloadProject = (
           .append('path')
           .attr('stroke', '#fff')
           .attr('stroke-width', 1)
-          .attr('cursor', 'pointer')
+          .attr('cursor', 'pointer');
+
+        const symbolGenerator = d3.symbol()
+          .type(getD3Symbol(pointStyle.shape))
+          .size(pointStyle.radius * pointStyle.radius * Math.PI);
+
+        // Merge Selection: Re-attach event listeners to update closures
+        points.merge(enter)
           .on('mouseover', (event, d) => {
              const html = generateTooltipHtml(d);
              if (html) {
@@ -299,13 +302,7 @@ export const downloadProject = (
           })
           .on('mouseout', () => {
              tooltip.style('opacity', 0).style('display', 'none');
-          });
-
-        const symbolGenerator = d3.symbol()
-          .type(getD3Symbol(pointStyle.shape))
-          .size(pointStyle.radius * pointStyle.radius * Math.PI);
-
-        points.merge(enter)
+          })
           .each(function(d) {
             const start = startPositions.get(d.id) || { x: 0, y: 0 };
             const end = endPositions.get(d.id) || { x: 0, y: 0 };
@@ -406,7 +403,7 @@ export const downloadProject = (
       const textOpacity = Math.min(Math.abs(localProgress - 0.5) * 3, 1);
 
       const getTextPositionStyles = (pos) => {
-        const base = "absolute max-w-md p-8 rounded-3xl bg-white/60 backdrop-blur-xl border border-white/50 shadow-2xl transition-all duration-500";
+        const base = "absolute max-w-md p-8 rounded-[2rem] bg-white/60 backdrop-blur-xl border border-white/50 shadow-2xl transition-all duration-500";
         switch (pos) {
           case TextPosition.TOP: return \`\${base} top-12 left-1/2 -translate-x-1/2\`;
           case TextPosition.BOTTOM: return \`\${base} bottom-12 left-1/2 -translate-x-1/2\`;
@@ -465,7 +462,14 @@ export const downloadProject = (
   </script>
 </body>
 </html>`;
+}
 
+export const downloadProject = (
+  data: DataPoint[], 
+  steps: StoryStep[], 
+  pointStyle: PointStyle
+) => {
+  const htmlContent = generateHtmlContent(data, steps, pointStyle);
   const blob = new Blob([htmlContent], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

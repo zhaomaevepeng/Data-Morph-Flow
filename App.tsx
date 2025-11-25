@@ -2,20 +2,17 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { GlassCard } from './components/GlassCard';
 import { VizRenderer } from './components/VizRenderer';
-import { generateDataset } from './services/geminiService';
 import { downloadProject } from './services/exportService';
 import { INITIAL_DATA, CHART_OPTIONS, DEFAULT_POINT_STYLE, DEFAULT_STEPS, POSITION_OPTIONS, COLOR_PALETTES, SHAPE_OPTIONS, LEGEND_POSITION_OPTIONS } from './constants';
 import { ChartType, DataPoint, VizConfig, PointStyle, ColorMode, StoryStep, TextPosition, DataMapping, ShapeType, LegendPosition } from './types';
-import { Wand2, BarChart3, LayoutGrid, ChevronDown, Upload, FileText, Palette, Database, Plus, Trash2, ArrowUp, ArrowDown, Download, Settings2, Check, Shapes, Maximize2, X, MessageSquare } from 'lucide-react';
+import { Wand2, BarChart3, LayoutGrid, ChevronDown, Upload, FileText, Palette, Database, Plus, Trash2, ArrowUp, ArrowDown, Download, Settings2, Check, Shapes, Maximize2, X, MessageSquare, Code2, Copy } from 'lucide-react';
 
-type DataSourceMode = 'AI' | 'UPLOAD' | 'MANUAL';
+type DataSourceMode = 'UPLOAD' | 'MANUAL';
 
 const App: React.FC = () => {
   // Data & Generation State
   const [data, setData] = useState<DataPoint[]>(INITIAL_DATA);
-  const [topic, setTopic] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [sourceMode, setSourceMode] = useState<DataSourceMode>('AI');
+  const [sourceMode, setSourceMode] = useState<DataSourceMode>('UPLOAD');
   const [manualInput, setManualInput] = useState('');
 
   // Data Mapping State
@@ -28,6 +25,7 @@ const App: React.FC = () => {
   const [pointStyle, setPointStyle] = useState<PointStyle>(DEFAULT_POINT_STYLE);
   const [activeTab, setActiveTab] = useState<'DATA' | 'STYLE'>('DATA');
   const [isExploreMode, setIsExploreMode] = useState(false);
+  const [showEmbedModal, setShowEmbedModal] = useState(false);
 
   // Scroll Logic
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -63,19 +61,6 @@ const App: React.FC = () => {
     handleScroll();
     return () => el?.removeEventListener('scroll', handleScroll);
   }, [steps.length]);
-
-  const handleGenerate = async () => {
-    if (!topic) return;
-    setIsGenerating(true);
-    const newData = await generateDataset(topic);
-    if (newData.length > 0) {
-        setData(newData);
-        setRawData([]); 
-        // Reset tooltip fields to default label as keys might change
-        setPointStyle(prev => ({...prev, tooltipFields: ['label']}));
-    }
-    setIsGenerating(false);
-  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -148,8 +133,8 @@ const App: React.FC = () => {
       }));
       
       setData(mappedData);
-      // Reset tooltip fields
-      setPointStyle(prev => ({...prev, tooltipFields: ['label', dataMapping.valueB].filter(Boolean)}));
+      // Reset tooltip fields to empty (show label only by default)
+      setPointStyle(prev => ({...prev, tooltipFields: []}));
   };
 
   const handleManualSubmit = () => {
@@ -158,7 +143,7 @@ const App: React.FC = () => {
       if (Array.isArray(parsed)) {
         setData(parsed as DataPoint[]);
         setRawData([]);
-        setPointStyle(prev => ({...prev, tooltipFields: ['label']}));
+        setPointStyle(prev => ({...prev, tooltipFields: []}));
       } else {
         alert('Input must be a JSON array.');
       }
@@ -190,24 +175,25 @@ const App: React.FC = () => {
     setSteps(newSteps);
   };
   
-  const handleTooltipChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
-    // Always keep 'label', add the selected value if it's not 'none'
-    const newFields = val === 'none' ? ['label'] : ['label', val];
-    // Remove duplicates just in case 'label' was selected
-    setPointStyle({ ...pointStyle, tooltipFields: [...new Set(newFields)] });
+  const toggleTooltipField = (key: string) => {
+    setPointStyle(prev => {
+      const current = prev.tooltipFields;
+      if (current.includes(key)) {
+        return { ...prev, tooltipFields: current.filter(k => k !== key) };
+      } else {
+        return { ...prev, tooltipFields: [...current, key] };
+      }
+    });
   };
 
   const tooltipOptions = useMemo(() => {
     if (data.length === 0) return [];
     const keys = Object.keys(data[0]);
-    const excluded = ['id', 'x', 'y', 'vx', 'vy', 'index']; // Exclude internal/d3 props
+    // Exclude internal/d3 props AND standard mapped fields (label, category, values)
+    const excluded = ['id', 'x', 'y', 'vx', 'vy', 'index', 'valueA', 'valueB', 'label', 'category', 'color']; 
     return keys.filter(k => !excluded.includes(k));
   }, [data]);
   
-  // Get the currently selected secondary tooltip field (if any)
-  const currentTooltipField = pointStyle.tooltipFields.find(f => f !== 'label') || 'none';
-
   // Derived Configs
   const prevStep = steps[activeIndex];
   const nextStep = steps[activeIndex + 1] || steps[steps.length - 1];
@@ -219,7 +205,7 @@ const App: React.FC = () => {
   const textOpacity = Math.min(Math.abs(localProgress - 0.5) * 3, 1); 
   
   const getTextPositionStyles = (pos: TextPosition) => {
-    const base = "absolute max-w-sm p-6 rounded-2xl bg-white/60 backdrop-blur-md border border-white/50 shadow-xl transition-all duration-500";
+    const base = "absolute max-w-sm p-6 rounded-[2rem] bg-white/60 backdrop-blur-md border border-white/50 shadow-xl transition-all duration-500";
     switch (pos) {
       case TextPosition.TOP: return `${base} top-10 left-1/2 -translate-x-1/2`;
       case TextPosition.BOTTOM: return `${base} bottom-10 left-1/2 -translate-x-1/2`;
@@ -235,7 +221,7 @@ const App: React.FC = () => {
     <div className="h-screen w-screen overflow-hidden bg-[#fdfcfe] text-slate-800 flex font-sans">
       
       {/* LEFT PANEL */}
-      <aside className="w-[420px] h-full flex flex-col gap-4 shadow-2xl bg-gradient-to-b from-[#dfd6f2] to-[#f2dfd6] backdrop-blur-xl border-r border-white/60 p-4 z-30">
+      <aside className="w-[420px] h-full flex flex-col gap-4 shadow-2xl bg-gradient-to-b from-[#E6E2F9] to-[#DDEAFB] backdrop-blur-xl border-r border-white/60 p-4 z-30">
         <header className="px-2 flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-700 to-slate-500 mb-1">
@@ -243,27 +229,20 @@ const App: React.FC = () => {
             </h1>
             <p className="text-xs text-slate-600 font-medium opacity-70">Interactive Data Storytelling</p>
           </div>
-          <button 
-            onClick={() => downloadProject(data, steps, pointStyle)}
-            className="p-2 bg-white/40 hover:bg-white/60 hover:text-slate-900 text-slate-600 rounded-full transition-all shadow-sm border border-white/40"
-            title="Download as HTML"
-          >
-            <Download className="w-5 h-5" />
-          </button>
         </header>
 
         {/* Tab Switcher */}
-        <div className="flex p-1 bg-white/30 rounded-xl mx-1 shrink-0">
+        <div className="flex p-1 bg-white/30 rounded-2xl mx-1 shrink-0">
           <button 
             onClick={() => setActiveTab('DATA')}
-            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'DATA' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-600 hover:bg-white/20'}`}
+            className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'DATA' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-600 hover:bg-white/20'}`}
           >
             <Database className="w-4 h-4 inline mr-2" />
             Story & Data
           </button>
           <button 
             onClick={() => setActiveTab('STYLE')}
-            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'STYLE' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-600 hover:bg-white/20'}`}
+            className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'STYLE' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-600 hover:bg-white/20'}`}
           >
             <Palette className="w-4 h-4 inline mr-2" />
             Visuals
@@ -278,11 +257,11 @@ const App: React.FC = () => {
                    <Database className="w-3 h-3" /> Data Source
                  </h2>
                 <div className="flex gap-2 mb-2">
-                  {(['AI', 'UPLOAD', 'MANUAL'] as DataSourceMode[]).map(mode => (
+                  {(['UPLOAD', 'MANUAL'] as DataSourceMode[]).map(mode => (
                     <button
                       key={mode}
                       onClick={() => setSourceMode(mode)}
-                      className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg border ${
+                      className={`flex-1 py-1.5 text-[10px] font-bold rounded-xl border ${
                         sourceMode === mode 
                         ? 'bg-[#C2E2FA] border-[#B7A3E3] text-slate-700' 
                         : 'bg-transparent border-slate-300/50 text-slate-500 hover:bg-white/30'
@@ -292,29 +271,10 @@ const App: React.FC = () => {
                     </button>
                   ))}
                 </div>
-
-                {sourceMode === 'AI' && (
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      placeholder="e.g. 'Solar System Planets'"
-                      className="w-full bg-white/50 border border-white/50 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
-                      value={topic}
-                      onChange={(e) => setTopic(e.target.value)}
-                    />
-                    <button
-                      onClick={handleGenerate}
-                      disabled={isGenerating || !topic}
-                      className={`w-full py-2 rounded-xl font-bold text-xs transition-all ${BUTTON_GRADIENT} disabled:opacity-50`}
-                    >
-                      {isGenerating ? 'Generating...' : 'Generate Dataset'}
-                    </button>
-                  </div>
-                )}
                 
                 {sourceMode === 'UPLOAD' && (
                    <div className="space-y-3">
-                       <div className="relative border-2 border-dashed border-slate-300 rounded-xl p-4 text-center hover:bg-white/20 transition-colors group">
+                       <div className="relative border-2 border-dashed border-slate-300 rounded-2xl p-4 text-center hover:bg-white/20 transition-colors group">
                           <input 
                             type="file" 
                             accept=".json,.csv"
@@ -330,7 +290,7 @@ const App: React.FC = () => {
                         </div>
 
                         {rawData.length > 0 && (
-                            <div className="bg-white/30 rounded-xl p-3 space-y-3 animate-in fade-in slide-in-from-top-2 border border-white/40">
+                            <div className="bg-white/30 rounded-2xl p-3 space-y-3 animate-in fade-in slide-in-from-top-2 border border-white/40">
                                 <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
                                     <Settings2 className="w-3 h-3" />
                                     <span>Map Your Data</span>
@@ -342,7 +302,7 @@ const App: React.FC = () => {
                                             <select 
                                                 value={dataMapping.category}
                                                 onChange={e => setDataMapping({...dataMapping, category: e.target.value})}
-                                                className="w-full appearance-none bg-white/50 border border-white/50 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 cursor-pointer"
+                                                className="w-full appearance-none bg-white/50 border border-white/50 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 cursor-pointer"
                                             >
                                                 {availableFields.map(f => <option key={f} value={f}>{f}</option>)}
                                             </select>
@@ -356,7 +316,7 @@ const App: React.FC = () => {
                                             <select 
                                                 value={dataMapping.valueB}
                                                 onChange={e => setDataMapping({...dataMapping, valueB: e.target.value})}
-                                                className="w-full appearance-none bg-white/50 border border-white/50 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 cursor-pointer"
+                                                className="w-full appearance-none bg-white/50 border border-white/50 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 cursor-pointer"
                                             >
                                                 {availableFields.map(f => <option key={f} value={f}>{f}</option>)}
                                             </select>
@@ -370,7 +330,7 @@ const App: React.FC = () => {
                                             <select 
                                                 value={dataMapping.label}
                                                 onChange={e => setDataMapping({...dataMapping, label: e.target.value})}
-                                                className="w-full appearance-none bg-white/50 border border-white/50 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 cursor-pointer"
+                                                className="w-full appearance-none bg-white/50 border border-white/50 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 cursor-pointer"
                                             >
                                                 {availableFields.map(f => <option key={f} value={f}>{f}</option>)}
                                             </select>
@@ -378,7 +338,7 @@ const App: React.FC = () => {
                                         </div>
                                     </div>
                                 </div>
-                                <button onClick={handleApplyMapping} className={`w-full py-2 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${BUTTON_GRADIENT}`}>
+                                <button onClick={handleApplyMapping} className={`w-full py-2 rounded-2xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${BUTTON_GRADIENT}`}>
                                     <Check className="w-3 h-3" /> Update Visualization
                                 </button>
                             </div>
@@ -389,12 +349,12 @@ const App: React.FC = () => {
                  {sourceMode === 'MANUAL' && (
                     <div className="space-y-2">
                       <textarea
-                        className="w-full h-20 bg-white/50 border border-white/50 rounded-xl px-3 py-2 text-[10px] font-mono focus:outline-none focus:ring-2 focus:ring-blue-200 resize-none"
+                        className="w-full h-20 bg-white/50 border border-white/50 rounded-2xl px-4 py-2 text-[10px] font-mono focus:outline-none focus:ring-2 focus:ring-blue-200 resize-none"
                         placeholder='[{"id":"1", ...}]'
                         value={manualInput}
                         onChange={(e) => setManualInput(e.target.value)}
                       />
-                      <button onClick={handleManualSubmit} className={`w-full py-1.5 rounded-xl font-bold text-xs transition-all ${BUTTON_GRADIENT}`}>
+                      <button onClick={handleManualSubmit} className={`w-full py-2 rounded-2xl font-bold text-xs transition-all ${BUTTON_GRADIENT}`}>
                         Update Data
                       </button>
                     </div>
@@ -422,7 +382,7 @@ const App: React.FC = () => {
                              <select
                                value={step.chartType}
                                onChange={(e) => updateStep(idx, { chartType: e.target.value as ChartType })}
-                               className="w-full appearance-none bg-white/50 border border-white/50 rounded-lg px-2 py-1.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-blue-200 cursor-pointer"
+                               className="w-full appearance-none bg-white/50 border border-white/50 rounded-xl px-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-blue-200 cursor-pointer"
                              >
                                {CHART_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                              </select>
@@ -432,14 +392,14 @@ const App: React.FC = () => {
                          <textarea 
                             value={step.text}
                             onChange={(e) => updateStep(idx, { text: e.target.value })}
-                            className="w-full bg-white/30 border border-white/40 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 resize-none"
+                            className="w-full bg-white/30 border border-white/40 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 resize-none"
                             rows={2}
                          />
                          <div className="relative">
                            <select
                               value={step.textPosition}
                               onChange={(e) => updateStep(idx, { textPosition: e.target.value as TextPosition })}
-                              className="w-full appearance-none bg-white/50 border border-white/50 rounded-lg px-2 py-1.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-blue-200 cursor-pointer"
+                              className="w-full appearance-none bg-white/50 border border-white/50 rounded-xl px-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-blue-200 cursor-pointer"
                            >
                              {POSITION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>Text: {opt.label}</option>)}
                            </select>
@@ -450,7 +410,7 @@ const App: React.FC = () => {
                      </GlassCard>
                    ))}
                  </div>
-                 <button onClick={addStep} className="w-full py-2 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 hover:bg-white/20 hover:border-slate-400 hover:text-slate-700 transition-all flex items-center justify-center gap-2 text-xs font-bold uppercase">
+                 <button onClick={addStep} className="w-full py-2 rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 hover:bg-white/20 hover:border-slate-400 hover:text-slate-700 transition-all flex items-center justify-center gap-2 text-xs font-bold uppercase">
                    <Plus className="w-4 h-4" /> Add Step
                  </button>
               </div>
@@ -467,18 +427,24 @@ const App: React.FC = () => {
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                         <MessageSquare className="w-3 h-3" /> Tooltip Details
                     </label>
-                    <div className="relative">
-                        <select
-                            value={currentTooltipField}
-                            onChange={handleTooltipChange}
-                            className="w-full appearance-none bg-white/50 border border-white/50 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-200 cursor-pointer"
-                        >
-                            <option value="none">None (Label only)</option>
-                            {tooltipOptions.map(key => (
-                                <option key={key} value={key}>{key}</option>
-                            ))}
-                        </select>
-                         <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
+                    <div className="bg-white/30 rounded-2xl p-2 border border-white/40">
+                       <p className="text-[10px] text-slate-500 mb-2">Select fields to show (Label is always included):</p>
+                       <div className="flex flex-wrap gap-2">
+                           {tooltipOptions.length === 0 && <span className="text-[10px] text-slate-400 italic">No extra fields available</span>}
+                           {tooltipOptions.map(key => (
+                               <button 
+                                   key={key}
+                                   onClick={() => toggleTooltipField(key)}
+                                   className={`px-3 py-1.5 text-[10px] rounded-xl border transition-all ${
+                                       pointStyle.tooltipFields.includes(key)
+                                       ? 'bg-[#C2E2FA] border-[#B7A3E3] text-slate-800 font-bold shadow-sm'
+                                       : 'bg-white/40 border-slate-200 text-slate-500 hover:bg-white/60'
+                                   }`}
+                               >
+                                   {key}
+                               </button>
+                           ))}
+                       </div>
                     </div>
                 </div>
 
@@ -489,7 +455,7 @@ const App: React.FC = () => {
                       <button
                         key={opt.value}
                         onClick={() => setPointStyle({...pointStyle, shape: opt.value})}
-                        className={`py-2 text-[10px] rounded-lg border transition-all flex items-center justify-center gap-1 ${
+                        className={`py-2 text-[10px] rounded-xl border transition-all flex items-center justify-center gap-1 ${
                           pointStyle.shape === opt.value ? 'bg-[#C2E2FA] border-[#B7A3E3] text-slate-800 font-bold shadow-sm' : 'border-transparent bg-white/30 text-slate-500 hover:bg-white/50'
                         }`}
                       >
@@ -501,19 +467,19 @@ const App: React.FC = () => {
 
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs font-medium text-slate-600"><span>Point Size</span><span>{pointStyle.radius}px</span></div>
-                  <input type="range" min="2" max="30" value={pointStyle.radius} onChange={(e) => setPointStyle({...pointStyle, radius: Number(e.target.value)})} className="w-full h-2 bg-slate-200/50 rounded-lg appearance-none cursor-pointer accent-[#FF8F8F]" />
+                  <input type="range" min="2" max="30" value={pointStyle.radius} onChange={(e) => setPointStyle({...pointStyle, radius: Number(e.target.value)})} className="w-full h-2 bg-slate-200/50 rounded-full appearance-none cursor-pointer accent-[#FF8F8F]" />
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs font-medium text-slate-600"><span>Opacity</span><span>{Math.round(pointStyle.opacity * 100)}%</span></div>
-                  <input type="range" min="0.1" max="1" step="0.1" value={pointStyle.opacity} onChange={(e) => setPointStyle({...pointStyle, opacity: Number(e.target.value)})} className="w-full h-2 bg-slate-200/50 rounded-lg appearance-none cursor-pointer accent-[#FF8F8F]" />
+                  <input type="range" min="0.1" max="1" step="0.1" value={pointStyle.opacity} onChange={(e) => setPointStyle({...pointStyle, opacity: Number(e.target.value)})} className="w-full h-2 bg-slate-200/50 rounded-full appearance-none cursor-pointer accent-[#FF8F8F]" />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Color Strategy</label>
                   <div className="flex gap-2">
-                    <button onClick={() => setPointStyle({...pointStyle, colorMode: ColorMode.CATEGORY})} className={`flex-1 py-2 text-xs rounded-lg border transition-all ${pointStyle.colorMode === ColorMode.CATEGORY ? 'bg-[#C2E2FA] border-[#B7A3E3] text-slate-800 font-bold' : 'border-transparent bg-white/20 text-slate-500'}`}>By Category</button>
-                    <button onClick={() => setPointStyle({...pointStyle, colorMode: ColorMode.SINGLE})} className={`flex-1 py-2 text-xs rounded-lg border transition-all ${pointStyle.colorMode === ColorMode.SINGLE ? 'bg-[#C2E2FA] border-[#B7A3E3] text-slate-800 font-bold' : 'border-transparent bg-white/20 text-slate-500'}`}>Single Color</button>
+                    <button onClick={() => setPointStyle({...pointStyle, colorMode: ColorMode.CATEGORY})} className={`flex-1 py-2 text-xs rounded-xl border transition-all ${pointStyle.colorMode === ColorMode.CATEGORY ? 'bg-[#C2E2FA] border-[#B7A3E3] text-slate-800 font-bold' : 'border-transparent bg-white/20 text-slate-500'}`}>By Category</button>
+                    <button onClick={() => setPointStyle({...pointStyle, colorMode: ColorMode.SINGLE})} className={`flex-1 py-2 text-xs rounded-xl border transition-all ${pointStyle.colorMode === ColorMode.SINGLE ? 'bg-[#C2E2FA] border-[#B7A3E3] text-slate-800 font-bold' : 'border-transparent bg-white/20 text-slate-500'}`}>Single Color</button>
                   </div>
                 </div>
 
@@ -525,7 +491,7 @@ const App: React.FC = () => {
                           <button
                              key={name}
                              onClick={() => setPointStyle({...pointStyle, palette: colors})}
-                             className={`w-full p-2 rounded-xl border transition-all flex items-center justify-between group ${JSON.stringify(pointStyle.palette) === JSON.stringify(colors) ? 'bg-white/60 border-[#B7A3E3] shadow-sm ring-1 ring-[#B7A3E3]/50' : 'bg-white/30 border-transparent hover:bg-white/50'}`}
+                             className={`w-full p-2 rounded-2xl border transition-all flex items-center justify-between group ${JSON.stringify(pointStyle.palette) === JSON.stringify(colors) ? 'bg-white/60 border-[#B7A3E3] shadow-sm ring-1 ring-[#B7A3E3]/50' : 'bg-white/30 border-transparent hover:bg-white/50'}`}
                           >
                              <span className="text-[10px] font-bold text-slate-500">{name}</span>
                              <div className="flex gap-1">
@@ -556,7 +522,7 @@ const App: React.FC = () => {
                        <button 
                          key={opt.value}
                          onClick={() => setPointStyle({...pointStyle, legendPosition: opt.value})}
-                         className={`py-2 text-[10px] rounded-lg border transition-all flex items-center justify-center gap-1 ${
+                         className={`py-2 text-[10px] rounded-xl border transition-all flex items-center justify-center gap-1 ${
                            pointStyle.legendPosition === opt.value ? 'bg-[#C2E2FA] border-[#B7A3E3] text-slate-800 font-bold shadow-sm' : 'border-transparent bg-white/30 text-slate-500 hover:bg-white/50'
                          }`}
                        >
@@ -568,12 +534,29 @@ const App: React.FC = () => {
               </GlassCard>
             </>
           )}
-          <GlassCard className="!p-3 mt-auto">
-            <div className="flex items-center justify-between text-slate-600 text-xs">
-              <div className="flex items-center gap-2"><BarChart3 className="w-4 h-4" /><span>{data.length} points</span></div>
-              <div className="px-2 py-0.5 rounded-full bg-white/40 border border-white/50">Ready</div>
-            </div>
-          </GlassCard>
+
+          {/* EXPORT SECTION AT BOTTOM */}
+          <div className="mt-auto pt-4">
+             <GlassCard className="!p-4">
+                 <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Export & Share</h2>
+                 <div className="grid grid-cols-2 gap-2">
+                    <button 
+                        onClick={() => downloadProject(data, steps, pointStyle)}
+                        className="py-2.5 rounded-2xl bg-white/40 hover:bg-white/60 hover:shadow-md border border-white/40 transition-all flex flex-col items-center justify-center gap-1"
+                    >
+                        <Download className="w-5 h-5 text-slate-700" />
+                        <span className="text-[10px] font-bold text-slate-600">Download HTML</span>
+                    </button>
+                    <button 
+                        onClick={() => setShowEmbedModal(true)}
+                        className="py-2.5 rounded-2xl bg-white/40 hover:bg-white/60 hover:shadow-md border border-white/40 transition-all flex flex-col items-center justify-center gap-1"
+                    >
+                        <Code2 className="w-5 h-5 text-slate-700" />
+                        <span className="text-[10px] font-bold text-slate-600">Get Embed Code</span>
+                    </button>
+                 </div>
+             </GlassCard>
+          </div>
         </div>
       </aside>
 
@@ -643,6 +626,53 @@ const App: React.FC = () => {
         )}
 
       </main>
+
+      {/* EMBED MODAL */}
+      {showEmbedModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm p-4">
+            <GlassCard className="w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-bold text-slate-700">Embed Visualization</h3>
+                    <button onClick={() => setShowEmbedModal(false)} className="p-1 hover:bg-slate-100 rounded-full transition-colors"><X className="w-5 h-5 text-slate-500" /></button>
+                </div>
+                <div className="space-y-4">
+                    <div className="text-sm text-slate-600 bg-blue-50/50 p-3 rounded-xl border border-blue-100">
+                        <p className="mb-2"><strong>How to embed:</strong></p>
+                        <ol className="list-decimal pl-4 space-y-1">
+                            <li>Download the HTML file using the "Download HTML" button.</li>
+                            <li>Upload the file to your website or hosting provider.</li>
+                            <li>Copy the code below and paste it where you want the chart to appear.</li>
+                        </ol>
+                    </div>
+                    
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Embed Code</label>
+                        <div className="relative group">
+                            <textarea 
+                                readOnly
+                                className="w-full h-24 bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-mono text-slate-600 resize-none focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                value={`<iframe src="YOUR_UPLOADED_FILE_URL.html" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);"></iframe>`}
+                            />
+                             <button 
+                                onClick={() => {
+                                    navigator.clipboard.writeText(`<iframe src="YOUR_UPLOADED_FILE_URL.html" width="100%" height="800" frameborder="0" style="border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);"></iframe>`);
+                                    alert('Copied to clipboard!');
+                                }}
+                                className="absolute top-2 right-2 p-1.5 bg-white shadow-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500"
+                                title="Copy to clipboard"
+                            >
+                                <Copy className="w-3 h-3" />
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <button onClick={() => setShowEmbedModal(false)} className="w-full py-2.5 bg-slate-800 text-white rounded-xl font-bold text-sm hover:bg-slate-700 transition-all shadow-lg hover:shadow-xl">
+                        Done
+                    </button>
+                </div>
+            </GlassCard>
+        </div>
+      )}
     </div>
   );
 };
